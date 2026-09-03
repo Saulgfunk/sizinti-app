@@ -1,5 +1,5 @@
 import { format } from 'date-fns';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { z } from 'zod';
 
@@ -9,8 +9,8 @@ import { DateField } from '@/components/date-field';
 import { ThemedText } from '@/components/themed-text';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth-context';
-import type { BillingCycle, Currency } from '@/lib/database.types';
-import { useCreateSubscription } from '@/lib/queries/useSubscriptions';
+import type { BillingCycle, Currency, Subscription } from '@/lib/database.types';
+import { useCreateSubscription, useUpdateSubscription } from '@/lib/queries/useSubscriptions';
 import { calculateLifetimeSpend } from '@/lib/utils/calculateLifetimeSpend';
 import { calculateNextRenewalDate } from '@/lib/utils/calculateNextRenewalDate';
 
@@ -36,36 +36,56 @@ export type SubscriptionFormPrefill = {
 
 type Props = {
   prefill?: SubscriptionFormPrefill;
+  editingSubscription?: Subscription;
   onBack: () => void;
   onSaved: () => void;
 };
 
-export function SubscriptionForm({ prefill, onBack, onSaved }: Props) {
+// Flow D: "Düzenle (edit any field)" reuses this same form, pre-filled from
+// the existing row, updating instead of inserting — pass editingSubscription
+// rather than prefill. lifetime_spent is deliberately left untouched on
+// edit; it's only seeded once at creation (see calculateLifetimeSpend) and
+// otherwise maintained server-side per docs/05_Data_Model.md.
+export function SubscriptionForm({ prefill, editingSubscription, onBack, onSaved }: Props) {
   const theme = useTheme();
   const { session } = useAuth();
+  const isEditing = !!editingSubscription;
   const createSubscription = useCreateSubscription();
+  const updateSubscription = useUpdateSubscription();
+  const isSaving = createSubscription.isPending || updateSubscription.isPending;
 
-  const [name, setName] = useState(prefill?.name ?? '');
-  const [category, setCategory] = useState<CategoryValue>(prefill?.category ?? 'other');
-  const [price, setPrice] = useState('');
-  const [currency, setCurrency] = useState<Currency>('TRY');
-  const [billingCycle, setBillingCycle] = useState<BillingCycle>('monthly');
-  const [customCycleDays, setCustomCycleDays] = useState('30');
-  const [startDate, setStartDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [nextRenewalDate, setNextRenewalDate] = useState(() =>
-    format(calculateNextRenewalDate(new Date(), 'monthly'), 'yyyy-MM-dd')
+  const [name, setName] = useState(editingSubscription?.name ?? prefill?.name ?? '');
+  const [category, setCategory] = useState<CategoryValue>(
+    (editingSubscription?.category as CategoryValue | undefined) ?? prefill?.category ?? 'other'
   );
-  const [reminderLeadDays, setReminderLeadDays] = useState(3);
+  const [price, setPrice] = useState(editingSubscription ? String(editingSubscription.price) : '');
+  const [currency, setCurrency] = useState<Currency>(editingSubscription?.currency ?? 'TRY');
+  const [billingCycle, setBillingCycle] = useState<BillingCycle>(editingSubscription?.billing_cycle ?? 'monthly');
+  const [customCycleDays, setCustomCycleDays] = useState(
+    editingSubscription?.custom_cycle_days ? String(editingSubscription.custom_cycle_days) : '30'
+  );
+  const [startDate, setStartDate] = useState(editingSubscription?.start_date ?? format(new Date(), 'yyyy-MM-dd'));
+  const [nextRenewalDate, setNextRenewalDate] = useState(
+    editingSubscription?.next_renewal_date ??
+      format(calculateNextRenewalDate(new Date(), 'monthly'), 'yyyy-MM-dd')
+  );
+  const [reminderLeadDays, setReminderLeadDays] = useState(editingSubscription?.reminder_lead_days ?? 3);
   const [error, setError] = useState<string | null>(null);
 
   // Auto-calculated from start date + cycle, but still user-editable — see
-  // the DateField below. Recalculating here only overwrites a manual edit
-  // if start date or cycle changes again afterward.
+  // the DateField below. Skips its first run so an edit's existing
+  // next_renewal_date isn't immediately overwritten just by opening the
+  // form; it only recalculates once start date or cycle actually changes.
+  const isFirstRun = useRef(true);
   useEffect(() => {
+    if (isFirstRun.current) {
+      isFirstRun.current = false;
+      if (isEditing) return;
+    }
     const start = new Date(startDate);
     const days = billingCycle === 'custom' ? parseInt(customCycleDays, 10) || 30 : undefined;
     setNextRenewalDate(format(calculateNextRenewalDate(start, billingCycle, days), 'yyyy-MM-dd'));
-  }, [startDate, billingCycle, customCycleDays]);
+  }, [startDate, billingCycle, customCycleDays, isEditing]);
 
   const handleSave = async () => {
     setError(null);
@@ -82,25 +102,42 @@ export function SubscriptionForm({ prefill, onBack, onSaved }: Props) {
     if (!session) return;
 
     try {
-      await createSubscription.mutateAsync({
-        user_id: session.user.id,
-        name: parsed.data.name,
-        category,
-        icon_key: prefill?.icon_key ?? null,
-        price: parsed.data.price,
-        currency,
-        billing_cycle: billingCycle,
-        custom_cycle_days: billingCycle === 'custom' ? parseInt(customCycleDays, 10) : null,
-        start_date: startDate,
-        next_renewal_date: nextRenewalDate,
-        reminder_lead_days: reminderLeadDays,
-        lifetime_spent: calculateLifetimeSpend(
-          new Date(startDate),
-          parsed.data.price,
-          billingCycle,
-          billingCycle === 'custom' ? parseInt(customCycleDays, 10) : null
-        ),
-      });
+      if (isEditing) {
+        await updateSubscription.mutateAsync({
+          id: editingSubscription.id,
+          edits: {
+            name: parsed.data.name,
+            category,
+            price: parsed.data.price,
+            currency,
+            billing_cycle: billingCycle,
+            custom_cycle_days: billingCycle === 'custom' ? parseInt(customCycleDays, 10) : null,
+            start_date: startDate,
+            next_renewal_date: nextRenewalDate,
+            reminder_lead_days: reminderLeadDays,
+          },
+        });
+      } else {
+        await createSubscription.mutateAsync({
+          user_id: session.user.id,
+          name: parsed.data.name,
+          category,
+          icon_key: prefill?.icon_key ?? null,
+          price: parsed.data.price,
+          currency,
+          billing_cycle: billingCycle,
+          custom_cycle_days: billingCycle === 'custom' ? parseInt(customCycleDays, 10) : null,
+          start_date: startDate,
+          next_renewal_date: nextRenewalDate,
+          reminder_lead_days: reminderLeadDays,
+          lifetime_spent: calculateLifetimeSpend(
+            new Date(startDate),
+            parsed.data.price,
+            billingCycle,
+            billingCycle === 'custom' ? parseInt(customCycleDays, 10) : null
+          ),
+        });
+      }
       onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Kaydedilemedi');
@@ -213,8 +250,12 @@ export function SubscriptionForm({ prefill, onBack, onSaved }: Props) {
 
       {error ? <ThemedText style={styles.error}>{error}</ThemedText> : null}
 
-      <Pressable style={styles.saveButton} onPress={handleSave} disabled={createSubscription.isPending}>
-        {createSubscription.isPending ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.saveButtonText}>Kaydet</Text>}
+      <Pressable style={styles.saveButton} onPress={handleSave} disabled={isSaving}>
+        {isSaving ? (
+          <ActivityIndicator color="#ffffff" />
+        ) : (
+          <Text style={styles.saveButtonText}>{isEditing ? 'Güncelle' : 'Kaydet'}</Text>
+        )}
       </Pressable>
     </View>
   );
