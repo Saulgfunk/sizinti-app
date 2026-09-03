@@ -1,15 +1,22 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import { useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { AuthProvider } from '@/lib/auth-context';
+import { useAuth, AuthProvider } from '@/lib/auth-context';
+import { registerPushToken } from '@/lib/push-notifications';
 import { useAuthGate } from '@/lib/use-auth-gate';
 
 const queryClient = new QueryClient();
 
 function Navigation() {
   useAuthGate();
+
+  const { session } = useAuth();
+  useEffect(() => {
+    if (session) registerPushToken(session.user.id);
+  }, [session]);
 
   return (
     <Stack screenOptions={{ headerShown: false }}>

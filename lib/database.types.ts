@@ -12,6 +12,7 @@ export interface Profile {
   checkin_interval_days: number;
   default_reminder_lead_days: number;
   onboarding_completed_at: string | null;
+  push_token: string | null;
   created_at: string;
 }
 

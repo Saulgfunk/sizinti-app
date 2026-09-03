@@ -9,6 +9,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import type { Currency } from '@/lib/database.types';
 import { useAuth } from '@/lib/auth-context';
+import { registerPushToken } from '@/lib/push-notifications';
 import { useUpdateProfile } from '@/lib/queries/useProfile';
 
 const CURRENCIES: Currency[] = ['TRY', 'USD', 'EUR', 'GBP'];
@@ -26,6 +27,7 @@ export default function Preferences() {
     try {
       const { status } = await Notifications.requestPermissionsAsync();
       setNotificationsGranted(status === 'granted');
+      if (status === 'granted' && session) await registerPushToken(session.user.id);
     } catch {
       // Permission API unsupported in this environment — not fatal, renewal
       // reminders just won't fire until the user enables it from OS settings.
