@@ -3,13 +3,13 @@ import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { z } from 'zod';
 
-import { CATEGORIES, type CategoryValue } from '@/constants/categories';
 import { Spacing } from '@/constants/theme';
 import { DateField } from '@/components/date-field';
 import { ThemedText } from '@/components/themed-text';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth-context';
 import type { BillingCycle, Currency, Subscription } from '@/lib/database.types';
+import { useCategories } from '@/lib/queries/useCategories';
 import { useCreateSubscription, useUpdateSubscription } from '@/lib/queries/useSubscriptions';
 import { calculateLifetimeSpend } from '@/lib/utils/calculateLifetimeSpend';
 import { calculateNextRenewalDate } from '@/lib/utils/calculateNextRenewalDate';
@@ -30,7 +30,7 @@ const nameAndPriceSchema = z.object({
 
 export type SubscriptionFormPrefill = {
   name?: string;
-  category?: CategoryValue;
+  category?: string;
   icon_key?: string;
 };
 
@@ -50,14 +50,13 @@ export function SubscriptionForm({ prefill, editingSubscription, onBack, onSaved
   const theme = useTheme();
   const { session } = useAuth();
   const isEditing = !!editingSubscription;
+  const { data: categories } = useCategories(session?.user.id);
   const createSubscription = useCreateSubscription();
   const updateSubscription = useUpdateSubscription();
   const isSaving = createSubscription.isPending || updateSubscription.isPending;
 
   const [name, setName] = useState(editingSubscription?.name ?? prefill?.name ?? '');
-  const [category, setCategory] = useState<CategoryValue>(
-    (editingSubscription?.category as CategoryValue | undefined) ?? prefill?.category ?? 'other'
-  );
+  const [category, setCategory] = useState(editingSubscription?.category ?? prefill?.category ?? 'other');
   const [price, setPrice] = useState(editingSubscription ? String(editingSubscription.price) : '');
   const [currency, setCurrency] = useState<Currency>(editingSubscription?.currency ?? 'TRY');
   const [billingCycle, setBillingCycle] = useState<BillingCycle>(editingSubscription?.billing_cycle ?? 'monthly');
@@ -162,7 +161,7 @@ export function SubscriptionForm({ prefill, editingSubscription, onBack, onSaved
         Kategori
       </ThemedText>
       <View style={styles.chipRow}>
-        {CATEGORIES.map((c) => (
+        {(categories ?? []).map((c) => (
           <Pressable
             key={c.value}
             style={[styles.chip, category === c.value && styles.chipActive]}

@@ -9,10 +9,10 @@ import { LifetimeSpendHeader } from '@/components/lifetime-spend-header';
 import { SubscriptionCard } from '@/components/subscription-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { CATEGORIES, type CategoryValue } from '@/constants/categories';
 import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
 import type { Currency } from '@/lib/database.types';
+import { useCategories } from '@/lib/queries/useCategories';
 import { useFxRates } from '@/lib/queries/useFxRates';
 import { useProfile } from '@/lib/queries/useProfile';
 import { useSubscriptions } from '@/lib/queries/useSubscriptions';
@@ -29,9 +29,10 @@ export default function Dashboard() {
   const { data: profile } = useProfile(session?.user.id);
   const { data: subscriptions, isLoading, isError } = useSubscriptions(session?.user.id);
   const { data: rates } = useFxRates();
+  const { data: categories } = useCategories(session?.user.id);
   const params = useLocalSearchParams<{ added?: string }>();
   const [showToast, setShowToast] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState<CategoryValue | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   useEffect(() => {
     if (!params.added) return;
@@ -89,6 +90,7 @@ export default function Dashboard() {
 
           <CategoryChart
             subscriptions={subscriptions!}
+            categories={categories ?? []}
             baseCurrency={baseCurrency}
             rates={rates ?? []}
             selectedCategory={selectedCategory}
@@ -98,7 +100,7 @@ export default function Dashboard() {
           {selectedCategory && (
             <View style={styles.filterBar}>
               <ThemedText type="small" themeColor="textSecondary">
-                Filtre: {CATEGORIES.find((c) => c.value === selectedCategory)?.label}
+                Filtre: {(categories ?? []).find((c) => c.value === selectedCategory)?.label}
               </ThemedText>
               <Pressable onPress={() => setSelectedCategory(null)}>
                 <ThemedText type="link">Temizle</ThemedText>

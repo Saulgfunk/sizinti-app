@@ -33,8 +33,18 @@ export interface Subscription {
   cancelled_at: string | null;
   lifetime_spent: number;
   last_checkin_date: string | null;
+  checkin_reminder_sent_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface Category {
+  id: string;
+  user_id: string;
+  value: string;
+  label: string;
+  color: string;
+  created_at: string;
 }
 
 export interface CheckinEvent {

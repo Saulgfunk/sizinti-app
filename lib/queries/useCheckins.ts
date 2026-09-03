@@ -35,7 +35,7 @@ export function useLogCheckin() {
       if (!resultedInCancellation) {
         const { error: subError } = await supabase
           .from('subscriptions')
-          .update({ last_checkin_date: format(new Date(), 'yyyy-MM-dd') })
+          .update({ last_checkin_date: format(new Date(), 'yyyy-MM-dd'), checkin_reminder_sent_at: null })
           .eq('id', subscriptionId);
         if (subError) throw subError;
       }

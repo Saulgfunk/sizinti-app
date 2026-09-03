@@ -7,10 +7,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { CATEGORIES } from '@/constants/categories';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth-context';
+import { useCategories } from '@/lib/queries/useCategories';
 import { useLogCheckin } from '@/lib/queries/useCheckins';
 import { useDeleteSubscription, useSubscription, useUpdateSubscription } from '@/lib/queries/useSubscriptions';
 import { formatCurrency } from '@/lib/utils/formatCurrency';
@@ -33,6 +33,7 @@ export default function SubscriptionDetail() {
   const isFromCheckin = fromCheckin === '1';
   const { session } = useAuth();
   const { data: subscription, isLoading, isError } = useSubscription(id);
+  const { data: categories } = useCategories(session?.user.id);
   const updateSubscription = useUpdateSubscription();
   const deleteSubscription = useDeleteSubscription();
   const logCheckin = useLogCheckin();
@@ -146,7 +147,7 @@ export default function SubscriptionDetail() {
   }
 
   const daysUntilRenewal = differenceInCalendarDays(new Date(subscription.next_renewal_date), new Date());
-  const categoryLabel = CATEGORIES.find((c) => c.value === subscription.category)?.label ?? subscription.category;
+  const categoryLabel = (categories ?? []).find((c) => c.value === subscription.category)?.label ?? subscription.category;
 
   return (
     <ThemedView style={[styles.container, { paddingTop: insets.top }]}>

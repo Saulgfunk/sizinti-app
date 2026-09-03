@@ -2,36 +2,38 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { PieChart } from 'react-native-gifted-charts';
 
 import { ThemedText } from '@/components/themed-text';
-import { CATEGORIES, type CategoryValue } from '@/constants/categories';
 import { Spacing } from '@/constants/theme';
-import type { Currency, FxRate, Subscription } from '@/lib/database.types';
+import type { Category, Currency, FxRate, Subscription } from '@/lib/database.types';
 import { formatCurrency } from '@/lib/utils/formatCurrency';
 import { fxConvert } from '@/lib/utils/fxConvert';
 import { normalizeToMonthly } from '@/lib/utils/normalizeToMonthly';
 
 type Props = {
   subscriptions: Subscription[];
+  categories: Category[];
   baseCurrency: Currency;
   rates: FxRate[];
-  selectedCategory: CategoryValue | null;
-  onSelectCategory: (category: CategoryValue | null) => void;
+  selectedCategory: string | null;
+  onSelectCategory: (category: string | null) => void;
 };
 
 // Flow C: "Category chart: tap to filter list by category." Converts each
 // subscription to base currency via fxConvert — one without an available
 // rate just doesn't contribute to its category's slice yet (see
 // lib/utils/fxConvert.ts for why that's expected today).
-export function CategoryChart({ subscriptions, baseCurrency, rates, selectedCategory, onSelectCategory }: Props) {
-  const totalsByCategory = CATEGORIES.map((cat) => {
-    const total = subscriptions
-      .filter((s) => s.status === 'active' && s.category === cat.value)
-      .reduce((sum, s) => {
-        const priceInBase = s.currency === baseCurrency ? s.price : fxConvert(s.price, s.currency, baseCurrency, rates);
-        if (priceInBase === null) return sum;
-        return sum + normalizeToMonthly(priceInBase, s.billing_cycle, s.custom_cycle_days);
-      }, 0);
-    return { ...cat, total };
-  }).filter((c) => c.total > 0);
+export function CategoryChart({ subscriptions, categories, baseCurrency, rates, selectedCategory, onSelectCategory }: Props) {
+  const totalsByCategory = categories
+    .map((cat) => {
+      const total = subscriptions
+        .filter((s) => s.status === 'active' && s.category === cat.value)
+        .reduce((sum, s) => {
+          const priceInBase = s.currency === baseCurrency ? s.price : fxConvert(s.price, s.currency, baseCurrency, rates);
+          if (priceInBase === null) return sum;
+          return sum + normalizeToMonthly(priceInBase, s.billing_cycle, s.custom_cycle_days);
+        }, 0);
+      return { ...cat, total };
+    })
+    .filter((c) => c.total > 0);
 
   if (totalsByCategory.length === 0) return null;
 
