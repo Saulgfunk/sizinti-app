@@ -32,6 +32,7 @@ export type NewSubscription = Pick<
   | 'start_date'
   | 'next_renewal_date'
   | 'reminder_lead_days'
+  | 'lifetime_spent'
 >;
 
 export function useCreateSubscription() {

@@ -3,22 +3,31 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { CategoryChart } from '@/components/category-chart';
+import { LifetimeSpendHeader } from '@/components/lifetime-spend-header';
+import { SubscriptionCard } from '@/components/subscription-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { CATEGORIES, type CategoryValue } from '@/constants/categories';
 import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
+import type { Currency } from '@/lib/database.types';
+import { useProfile } from '@/lib/queries/useProfile';
 import { useSubscriptions } from '@/lib/queries/useSubscriptions';
 
-// Empty state + FAB (docs/07_Project_Structure.md build order step 4), plus
-// a bare-bones list once subscriptions exist so the screen doesn't look
-// broken now that Add Subscription (step 5) can actually create rows.
-// Totals, category chart, and the real card design are step 6.
+const VALID_CURRENCIES: Currency[] = ['TRY', 'USD', 'EUR', 'GBP'];
+
+// docs/07_Project_Structure.md build order step 6: totals, category chart,
+// subscription card list, now that Add Subscription (step 5) can create
+// rows. Check-in card and bell icon are steps 8/9, not this one.
 export default function Dashboard() {
   const insets = useSafeAreaInsets();
   const { session } = useAuth();
+  const { data: profile } = useProfile(session?.user.id);
   const { data: subscriptions, isLoading, isError } = useSubscriptions(session?.user.id);
   const params = useLocalSearchParams<{ added?: string }>();
   const [showToast, setShowToast] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<CategoryValue | null>(null);
 
   useEffect(() => {
     if (!params.added) return;
@@ -30,6 +39,15 @@ export default function Dashboard() {
 
   const goToAdd = () => router.push('/subscription/add');
   const isEmpty = (subscriptions?.length ?? 0) === 0;
+
+  const baseCurrency: Currency =
+    profile?.base_currency && (VALID_CURRENCIES as string[]).includes(profile.base_currency)
+      ? (profile.base_currency as Currency)
+      : 'TRY';
+
+  const visibleSubscriptions = selectedCategory
+    ? (subscriptions ?? []).filter((s) => s.category === selectedCategory)
+    : subscriptions;
 
   return (
     <ThemedView style={[styles.container, { paddingTop: insets.top }]}>
@@ -57,15 +75,32 @@ export default function Dashboard() {
           </Pressable>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.list}>
-          {subscriptions!.map((sub) => (
-            <View key={sub.id} style={styles.row}>
-              <ThemedText>{sub.name}</ThemedText>
-              <ThemedText themeColor="textSecondary">
-                {sub.price} {sub.currency}
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <LifetimeSpendHeader subscriptions={subscriptions!} baseCurrency={baseCurrency} />
+
+          <CategoryChart
+            subscriptions={subscriptions!}
+            baseCurrency={baseCurrency}
+            selectedCategory={selectedCategory}
+            onSelectCategory={setSelectedCategory}
+          />
+
+          {selectedCategory && (
+            <View style={styles.filterBar}>
+              <ThemedText type="small" themeColor="textSecondary">
+                Filtre: {CATEGORIES.find((c) => c.value === selectedCategory)?.label}
               </ThemedText>
+              <Pressable onPress={() => setSelectedCategory(null)}>
+                <ThemedText type="link">Temizle</ThemedText>
+              </Pressable>
             </View>
-          ))}
+          )}
+
+          <View style={styles.list}>
+            {visibleSubscriptions!.map((sub) => (
+              <SubscriptionCard key={sub.id} subscription={sub} />
+            ))}
+          </View>
         </ScrollView>
       )}
 
@@ -87,15 +122,9 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.three,
   },
   ctaButtonText: { color: '#ffffff', fontWeight: '600', fontSize: 16 },
-  list: { padding: Spacing.three, gap: Spacing.three },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    borderWidth: 1,
-    borderColor: '#D0D2D8',
-    borderRadius: 12,
-    padding: Spacing.three,
-  },
+  scrollContent: { padding: Spacing.three, paddingBottom: Spacing.six, gap: Spacing.three },
+  filterBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  list: { gap: Spacing.three },
   fab: {
     position: 'absolute',
     right: Spacing.four,

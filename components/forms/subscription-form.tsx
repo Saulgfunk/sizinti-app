@@ -11,6 +11,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth-context';
 import type { BillingCycle, Currency } from '@/lib/database.types';
 import { useCreateSubscription } from '@/lib/queries/useSubscriptions';
+import { calculateLifetimeSpend } from '@/lib/utils/calculateLifetimeSpend';
 import { calculateNextRenewalDate } from '@/lib/utils/calculateNextRenewalDate';
 
 const CURRENCIES: Currency[] = ['TRY', 'USD', 'EUR', 'GBP'];
@@ -93,6 +94,12 @@ export function SubscriptionForm({ prefill, onBack, onSaved }: Props) {
         start_date: startDate,
         next_renewal_date: nextRenewalDate,
         reminder_lead_days: reminderLeadDays,
+        lifetime_spent: calculateLifetimeSpend(
+          new Date(startDate),
+          parsed.data.price,
+          billingCycle,
+          billingCycle === 'custom' ? parseInt(customCycleDays, 10) : null
+        ),
       });
       onSaved();
     } catch (e) {
