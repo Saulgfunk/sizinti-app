@@ -1,0 +1,45 @@
+@AGENTS.md
+
+# Sızıntı — Project Context for Claude Code
+
+Sızıntı ("leak" in Turkish — working title, rename freely) is a Turkish subscription and spending-leak finder: manual subscription tracking with a lifetime-spend counter and periodic "hâlâ kullanıyor musun?" (still using this?) check-ins. See `/docs` for the complete spec — this file is a fast-reference summary; the docs are the source of truth if anything here seems to conflict.
+
+## Read this first, in order
+
+1. `docs/01_PRD.md` — problem, target user, MVP scope, success metrics
+2. `docs/02_User_Flow.md` — every screen-to-screen journey (Flows A–H)
+3. `docs/03_Flowchart.md` — Mermaid diagrams for navigation, renewal logic, check-in/leak-detection logic
+4. `docs/04_Screens_and_Features.md` — screen inventory and P0/P1/P2 feature priority
+5. `docs/05_Data_Model.md` — schema, implemented as the Supabase migration in `supabase/migrations/`
+6. `docs/06_Tech_Stack.md` — chosen stack and reasoning
+7. `docs/07_Project_Structure.md` — repo layout and build order (build in this phase order — each phase should be verified before starting the next)
+8. `docs/08_Roadmap.md` — phased scope; **we are building Phase 0 / v0.1 only**
+
+## Stack (decided — see docs/06 for rationale)
+
+- **App:** React Native + Expo (expo-router, file-based routing)
+- **Backend:** Supabase (Postgres, Auth via email/Google/Apple, Row Level Security, Edge Functions for scheduled jobs)
+- **State:** `@tanstack/react-query` for server state
+- **Charts:** `react-native-gifted-charts`
+- **Validation:** `zod`
+
+## Non-negotiable constraints
+
+- Manual entry only in v0.1 — no bank sync, CSV import, or OCR. Those are Phase 2+ (`docs/08_Roadmap.md`); flag it if asked to build them early.
+- RLS policies must exist before any UI touches a table — never retrofit. Current policies are in `supabase/migrations/`, matching `docs/05_Data_Model.md` exactly (field names must never drift from that doc).
+- `checkin_events` is append-only — no update/delete policy, by design (it's the core "leak found" analytics signal).
+- Build in phases per `docs/07_Project_Structure.md` build order; stop after each phase for a verification checkpoint rather than chaining phases automatically.
+
+## Working name
+
+"Sızıntı" is a placeholder — nothing in the architecture depends on it.
+
+## Current status
+
+Phase 1 complete: Expo project scaffolded (expo-router, TypeScript), Tech Stack packages installed, Supabase local project initialized with an initial migration covering `profiles`, `subscriptions`, `checkin_events`, `fx_rates`, and RLS policies. A live Supabase project exists and the migration has been applied — `lib/supabase.ts` holds the client, credentials live in `.env` (gitignored). RLS verified live (anon read on `fx_rates` works, anon insert into `subscriptions` correctly rejected).
+
+Phase 2 complete: Auth flow built (Splash → Welcome carousel → Signup/Login → Onboarding Preferences), per `docs/07_Project_Structure.md` step 3. Email/password auth is fully functional against the live project (verified via a real test signup — this project has "Confirm email" enabled, so the app correctly shows a "check your email" state after signup rather than an immediate session). Google/Apple buttons are wired to `signInWithOAuth` but **won't work until the user configures those providers in the Supabase dashboard** (external OAuth app setup — deliberately deferred, user needs test accounts first). Routing between logged-out / needs-onboarding / ready states lives in `lib/use-auth-gate.ts`, mounted at the root layout so it works from any screen. Added `profiles.onboarding_completed_at` (migration `20260903090457`, not in the original data model doc — needed for routing; must be applied to the live project via SQL Editor same as the initial migration).
+
+Phase 3 complete: Dashboard shell built per `docs/07_Project_Structure.md` step 4 — empty state + FAB, wired to a real `useSubscriptions` hook (`lib/queries/useSubscriptions.ts`) that currently returns `[]` since no subscriptions exist yet. Added the `(tabs)` route group (`app/(tabs)/_layout.tsx`) with Dashboard/Subscriptions/Settings tabs — Subscriptions and Settings are stubs (their real content is later build-order steps); Settings carries the sign-out button forward from the old `dashboard-placeholder.tsx`, which is now deleted. Added `app/subscription/add.tsx` as a stub destination for the FAB/CTA (the real Quick-Add Grid + Subscription Form is step 5, Flow B). `lib/use-auth-gate.ts` now redirects onboarded users to `/(tabs)/dashboard`.
+
+Phase 5 complete (Add Subscription, build order step 5 / Flow B): `app/subscription/add.tsx` is now a real 2-step wizard (Quick-Add Grid → Subscription Form) implemented as one route with internal state — `docs/07_Project_Structure.md`'s suggested layout lists only one `add.tsx` file, so this keeps that instead of adding a second route. Added `@react-native-community/datetimepicker` (native-only — no web build, hence `components/date-field.tsx` + `.web.tsx` platform variants) and `constants/categories.ts` / `constants/quickAddServices.ts`. Quick-add service badges are colored initials, not real logos — `assets/logos/` is still empty. `useCreateSubscription` (in `useSubscriptions.ts`) does the actual insert; Dashboard now shows a bare-bones list once subscriptions exist (not the real card design — that's step 6) plus a brief "Eklendi ✓" toast on return. Not verified against a live insert (would need a confirmed test session) — verified via clean `tsc`, clean bundle, and the insert payload's TypeScript type being constrained to match `Subscription` exactly.
