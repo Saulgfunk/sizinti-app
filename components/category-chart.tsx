@@ -4,26 +4,32 @@ import { PieChart } from 'react-native-gifted-charts';
 import { ThemedText } from '@/components/themed-text';
 import { CATEGORIES, type CategoryValue } from '@/constants/categories';
 import { Spacing } from '@/constants/theme';
-import type { Currency, Subscription } from '@/lib/database.types';
+import type { Currency, FxRate, Subscription } from '@/lib/database.types';
 import { formatCurrency } from '@/lib/utils/formatCurrency';
+import { fxConvert } from '@/lib/utils/fxConvert';
 import { normalizeToMonthly } from '@/lib/utils/normalizeToMonthly';
 
 type Props = {
   subscriptions: Subscription[];
   baseCurrency: Currency;
+  rates: FxRate[];
   selectedCategory: CategoryValue | null;
   onSelectCategory: (category: CategoryValue | null) => void;
 };
 
-// Flow C: "Category chart: tap to filter list by category." Only counts
-// active subscriptions in the profile's base currency — cross-currency
-// aggregation is deferred to Polish pass (docs/07_Project_Structure.md step
-// 11, "FX display formatting"), same as LifetimeSpendHeader.
-export function CategoryChart({ subscriptions, baseCurrency, selectedCategory, onSelectCategory }: Props) {
+// Flow C: "Category chart: tap to filter list by category." Converts each
+// subscription to base currency via fxConvert — one without an available
+// rate just doesn't contribute to its category's slice yet (see
+// lib/utils/fxConvert.ts for why that's expected today).
+export function CategoryChart({ subscriptions, baseCurrency, rates, selectedCategory, onSelectCategory }: Props) {
   const totalsByCategory = CATEGORIES.map((cat) => {
     const total = subscriptions
-      .filter((s) => s.status === 'active' && s.currency === baseCurrency && s.category === cat.value)
-      .reduce((sum, s) => sum + normalizeToMonthly(s.price, s.billing_cycle, s.custom_cycle_days), 0);
+      .filter((s) => s.status === 'active' && s.category === cat.value)
+      .reduce((sum, s) => {
+        const priceInBase = s.currency === baseCurrency ? s.price : fxConvert(s.price, s.currency, baseCurrency, rates);
+        if (priceInBase === null) return sum;
+        return sum + normalizeToMonthly(priceInBase, s.billing_cycle, s.custom_cycle_days);
+      }, 0);
     return { ...cat, total };
   }).filter((c) => c.total > 0);
 

@@ -3,33 +3,43 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
-import type { Currency, Subscription } from '@/lib/database.types';
+import type { Currency, FxRate, Subscription } from '@/lib/database.types';
 import { formatCurrency } from '@/lib/utils/formatCurrency';
+import { fxConvert } from '@/lib/utils/fxConvert';
 import { normalizeToMonthly } from '@/lib/utils/normalizeToMonthly';
 
 type Props = {
   subscriptions: Subscription[];
   baseCurrency: Currency;
+  rates: FxRate[];
 };
 
 // Flow C: lifetime total (the "emotional hook" number) + monthly/yearly
-// toggle for current recurring spend. Both sums are scoped to the profile's
-// base currency for now — cross-currency totals need the fx_rates table
-// populated, which is Polish pass (docs/07_Project_Structure.md step 11),
-// not this one.
-export function LifetimeSpendHeader({ subscriptions, baseCurrency }: Props) {
+// toggle for current recurring spend. Converts everything to base currency
+// via fxConvert — a subscription only gets excluded from the totals if no
+// rate is available for its pair yet (expected today: fetch-fx-rates isn't
+// deployed, so fx_rates is empty; every subscription will fall into that
+// bucket until it is).
+export function LifetimeSpendHeader({ subscriptions, baseCurrency, rates }: Props) {
   const [cadence, setCadence] = useState<'monthly' | 'yearly'>('monthly');
 
-  const baseCurrencySubs = subscriptions.filter((s) => s.currency === baseCurrency);
-  const otherCurrencyCount = subscriptions.length - baseCurrencySubs.length;
+  const convertedSubs = subscriptions
+    .map((s) => ({
+      sub: s,
+      lifetime: s.currency === baseCurrency ? s.lifetime_spent : fxConvert(s.lifetime_spent, s.currency, baseCurrency, rates),
+      price: s.currency === baseCurrency ? s.price : fxConvert(s.price, s.currency, baseCurrency, rates),
+    }))
+    .filter((c) => c.lifetime !== null);
+
+  const unconvertedCount = subscriptions.length - convertedSubs.length;
 
   // Lifetime total includes cancelled subscriptions — their spend is frozen,
   // not erased (docs/03_Flowchart.md §5).
-  const lifetimeTotal = baseCurrencySubs.reduce((sum, s) => sum + s.lifetime_spent, 0);
+  const lifetimeTotal = convertedSubs.reduce((sum, c) => sum + (c.lifetime ?? 0), 0);
 
-  const recurringMonthly = baseCurrencySubs
-    .filter((s) => s.status === 'active')
-    .reduce((sum, s) => sum + normalizeToMonthly(s.price, s.billing_cycle, s.custom_cycle_days), 0);
+  const recurringMonthly = convertedSubs
+    .filter((c) => c.sub.status === 'active' && c.price !== null)
+    .reduce((sum, c) => sum + normalizeToMonthly(c.price!, c.sub.billing_cycle, c.sub.custom_cycle_days), 0);
   const recurringTotal = cadence === 'monthly' ? recurringMonthly : recurringMonthly * 12;
 
   return (
@@ -40,9 +50,9 @@ export function LifetimeSpendHeader({ subscriptions, baseCurrency }: Props) {
       <ThemedText type="title" style={styles.lifetimeNumber}>
         {formatCurrency(lifetimeTotal, baseCurrency)}
       </ThemedText>
-      {otherCurrencyCount > 0 && (
+      {unconvertedCount > 0 && (
         <ThemedText type="small" themeColor="textSecondary">
-          + {otherCurrencyCount} farklı para biriminde abonelik (yakında dahil edilecek)
+          + {unconvertedCount} abonelik için kur bilgisi henüz yok
         </ThemedText>
       )}
 

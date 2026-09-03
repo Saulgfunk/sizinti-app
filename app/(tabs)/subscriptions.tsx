@@ -6,7 +6,12 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
+import type { Currency } from '@/lib/database.types';
+import { useFxRates } from '@/lib/queries/useFxRates';
+import { useProfile } from '@/lib/queries/useProfile';
 import { useSubscriptions } from '@/lib/queries/useSubscriptions';
+
+const VALID_CURRENCIES: Currency[] = ['TRY', 'USD', 'EUR', 'GBP'];
 
 // Screen 6 (docs/04_Screens_and_Features.md): "same card list as Dashboard,
 // list-first view." Sort/filter controls aren't built yet — this is the
@@ -14,7 +19,14 @@ import { useSubscriptions } from '@/lib/queries/useSubscriptions';
 export default function Subscriptions() {
   const insets = useSafeAreaInsets();
   const { session } = useAuth();
+  const { data: profile } = useProfile(session?.user.id);
   const { data: subscriptions, isLoading, isError } = useSubscriptions(session?.user.id);
+  const { data: rates } = useFxRates();
+
+  const baseCurrency: Currency =
+    profile?.base_currency && (VALID_CURRENCIES as string[]).includes(profile.base_currency)
+      ? (profile.base_currency as Currency)
+      : 'TRY';
 
   return (
     <ThemedView style={[styles.container, { paddingTop: insets.top }]}>
@@ -33,7 +45,7 @@ export default function Subscriptions() {
       ) : (
         <ScrollView contentContainerStyle={styles.list}>
           {subscriptions!.map((sub) => (
-            <SubscriptionCard key={sub.id} subscription={sub} />
+            <SubscriptionCard key={sub.id} subscription={sub} baseCurrency={baseCurrency} rates={rates ?? []} />
           ))}
         </ScrollView>
       )}

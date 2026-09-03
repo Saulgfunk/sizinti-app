@@ -1,4 +1,4 @@
-import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
@@ -34,7 +34,15 @@ export default function Settings() {
     );
   };
 
-  if (!profile || !session) return null;
+  if (!profile || !session) {
+    return (
+      <ThemedView style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={styles.centerFill}>
+          <ActivityIndicator />
+        </View>
+      </ThemedView>
+    );
+  }
 
   return (
     <ThemedView style={[styles.container, { paddingTop: insets.top }]}>
@@ -119,6 +127,7 @@ export default function Settings() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  centerFill: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   scrollContent: { padding: Spacing.three, paddingBottom: Spacing.six, gap: Spacing.five },
   title: { marginBottom: Spacing.two },
   section: { gap: Spacing.two },

@@ -13,6 +13,7 @@ import { CATEGORIES, type CategoryValue } from '@/constants/categories';
 import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
 import type { Currency } from '@/lib/database.types';
+import { useFxRates } from '@/lib/queries/useFxRates';
 import { useProfile } from '@/lib/queries/useProfile';
 import { useSubscriptions } from '@/lib/queries/useSubscriptions';
 import { selectCheckinCandidate } from '@/lib/utils/selectCheckinCandidate';
@@ -27,6 +28,7 @@ export default function Dashboard() {
   const { session } = useAuth();
   const { data: profile } = useProfile(session?.user.id);
   const { data: subscriptions, isLoading, isError } = useSubscriptions(session?.user.id);
+  const { data: rates } = useFxRates();
   const params = useLocalSearchParams<{ added?: string }>();
   const [showToast, setShowToast] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<CategoryValue | null>(null);
@@ -83,11 +85,12 @@ export default function Dashboard() {
         <ScrollView contentContainerStyle={styles.scrollContent}>
           {checkinCandidate && session && <CheckinCard subscription={checkinCandidate} userId={session.user.id} />}
 
-          <LifetimeSpendHeader subscriptions={subscriptions!} baseCurrency={baseCurrency} />
+          <LifetimeSpendHeader subscriptions={subscriptions!} baseCurrency={baseCurrency} rates={rates ?? []} />
 
           <CategoryChart
             subscriptions={subscriptions!}
             baseCurrency={baseCurrency}
+            rates={rates ?? []}
             selectedCategory={selectedCategory}
             onSelectCategory={setSelectedCategory}
           />
@@ -105,7 +108,7 @@ export default function Dashboard() {
 
           <View style={styles.list}>
             {visibleSubscriptions!.map((sub) => (
-              <SubscriptionCard key={sub.id} subscription={sub} />
+              <SubscriptionCard key={sub.id} subscription={sub} baseCurrency={baseCurrency} rates={rates ?? []} />
             ))}
           </View>
         </ScrollView>

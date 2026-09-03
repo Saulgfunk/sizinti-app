@@ -9,6 +9,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { CATEGORIES } from '@/constants/categories';
 import { Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth-context';
 import { useLogCheckin } from '@/lib/queries/useCheckins';
 import { useDeleteSubscription, useSubscription, useUpdateSubscription } from '@/lib/queries/useSubscriptions';
@@ -27,6 +28,7 @@ const BILLING_CYCLE_LABELS: Record<string, string> = {
 // checkin_event fires here once the outcome (cancel or dismiss) is known.
 export default function SubscriptionDetail() {
   const insets = useSafeAreaInsets();
+  const theme = useTheme();
   const { id, fromCheckin } = useLocalSearchParams<{ id: string; fromCheckin?: string }>();
   const isFromCheckin = fromCheckin === '1';
   const { session } = useAuth();
@@ -155,8 +157,8 @@ export default function SubscriptionDetail() {
 
         <ThemedText type="subtitle">{subscription.name}</ThemedText>
         {subscription.status === 'cancelled' && (
-          <View style={styles.cancelledBadge}>
-            <ThemedText type="small" style={styles.cancelledBadgeText}>
+          <View style={[styles.cancelledBadge, { backgroundColor: theme.backgroundElement }]}>
+            <ThemedText type="small" themeColor="textSecondary">
               İptal edildi
             </ThemedText>
           </View>
@@ -245,12 +247,10 @@ const styles = StyleSheet.create({
   centerFill: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   cancelledBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: '#F3F4F6',
     borderRadius: 999,
     paddingHorizontal: Spacing.two,
     paddingVertical: Spacing.half,
   },
-  cancelledBadgeText: { color: '#6B7280' },
   checkinNudge: {
     backgroundColor: '#FEF3C7',
     borderRadius: 12,
