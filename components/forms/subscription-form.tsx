@@ -51,7 +51,9 @@ export function SubscriptionForm({ prefill, onBack, onSaved }: Props) {
   const [billingCycle, setBillingCycle] = useState<BillingCycle>('monthly');
   const [customCycleDays, setCustomCycleDays] = useState('30');
   const [startDate, setStartDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [nextRenewalDate, setNextRenewalDate] = useState('');
+  const [nextRenewalDate, setNextRenewalDate] = useState(() =>
+    format(calculateNextRenewalDate(new Date(), 'monthly'), 'yyyy-MM-dd')
+  );
   const [reminderLeadDays, setReminderLeadDays] = useState(3);
   const [error, setError] = useState<string | null>(null);
 
