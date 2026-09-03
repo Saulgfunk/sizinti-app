@@ -90,6 +90,15 @@ export function useUpdateSubscription() {
       return data;
     },
     onSuccess: (data) => {
+      // Write the fresh row straight into the cache rather than relying
+      // solely on invalidateQueries — a screen reached via router.replace
+      // isn't guaranteed to be the same mounted instance that was
+      // subscribed before, so a refetch can land somewhere invalidation
+      // doesn't reliably reach in time.
+      queryClient.setQueryData(['subscription', data.id], data);
+      queryClient.setQueryData<Subscription[]>(['subscriptions', data.user_id], (old) =>
+        old ? old.map((s) => (s.id === data.id ? data : s)) : old
+      );
       queryClient.invalidateQueries({ queryKey: ['subscriptions', data.user_id] });
       queryClient.invalidateQueries({ queryKey: ['subscription', data.id] });
     },
@@ -104,7 +113,11 @@ export function useDeleteSubscription() {
       const { error } = await supabase.from('subscriptions').delete().eq('id', id);
       if (error) throw error;
     },
-    onSuccess: (_data, { userId }) => {
+    onSuccess: (_data, { id, userId }) => {
+      queryClient.setQueryData<Subscription[]>(['subscriptions', userId], (old) =>
+        old ? old.filter((s) => s.id !== id) : old
+      );
+      queryClient.removeQueries({ queryKey: ['subscription', id] });
       queryClient.invalidateQueries({ queryKey: ['subscriptions', userId] });
     },
   });
