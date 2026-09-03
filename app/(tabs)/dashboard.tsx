@@ -4,6 +4,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'reac
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CategoryChart } from '@/components/category-chart';
+import { CheckinCard } from '@/components/checkin-card';
 import { LifetimeSpendHeader } from '@/components/lifetime-spend-header';
 import { SubscriptionCard } from '@/components/subscription-card';
 import { ThemedText } from '@/components/themed-text';
@@ -14,6 +15,7 @@ import { useAuth } from '@/lib/auth-context';
 import type { Currency } from '@/lib/database.types';
 import { useProfile } from '@/lib/queries/useProfile';
 import { useSubscriptions } from '@/lib/queries/useSubscriptions';
+import { selectCheckinCandidate } from '@/lib/utils/selectCheckinCandidate';
 
 const VALID_CURRENCIES: Currency[] = ['TRY', 'USD', 'EUR', 'GBP'];
 
@@ -49,6 +51,9 @@ export default function Dashboard() {
     ? (subscriptions ?? []).filter((s) => s.category === selectedCategory)
     : subscriptions;
 
+  const checkinCandidate =
+    subscriptions && profile ? selectCheckinCandidate(subscriptions, profile.checkin_interval_days) : null;
+
   return (
     <ThemedView style={[styles.container, { paddingTop: insets.top }]}>
       {showToast && (
@@ -76,6 +81,8 @@ export default function Dashboard() {
         </View>
       ) : (
         <ScrollView contentContainerStyle={styles.scrollContent}>
+          {checkinCandidate && session && <CheckinCard subscription={checkinCandidate} userId={session.user.id} />}
+
           <LifetimeSpendHeader subscriptions={subscriptions!} baseCurrency={baseCurrency} />
 
           <CategoryChart

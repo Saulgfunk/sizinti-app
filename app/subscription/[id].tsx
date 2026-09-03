@@ -1,7 +1,7 @@
 import { differenceInCalendarDays, format } from 'date-fns';
 import { tr } from 'date-fns/locale';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -10,6 +10,7 @@ import { ThemedView } from '@/components/themed-view';
 import { CATEGORIES } from '@/constants/categories';
 import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
+import { useLogCheckin } from '@/lib/queries/useCheckins';
 import { useDeleteSubscription, useSubscription, useUpdateSubscription } from '@/lib/queries/useSubscriptions';
 import { formatCurrency } from '@/lib/utils/formatCurrency';
 
@@ -21,15 +22,51 @@ const BILLING_CYCLE_LABELS: Record<string, string> = {
 };
 
 // Flow D (docs/02_User_Flow.md): full detail view + lifetime spent + mini
-// timeline, with Düzenle/İptal Et/Sil actions.
+// timeline, with Düzenle/İptal Et/Sil actions. Also handles Flow F's
+// "Hayır / Emin değilim" hand-off (fromCheckin param) — the deferred
+// checkin_event fires here once the outcome (cancel or dismiss) is known.
 export default function SubscriptionDetail() {
   const insets = useSafeAreaInsets();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, fromCheckin } = useLocalSearchParams<{ id: string; fromCheckin?: string }>();
+  const isFromCheckin = fromCheckin === '1';
   const { session } = useAuth();
   const { data: subscription, isLoading, isError } = useSubscription(id);
   const updateSubscription = useUpdateSubscription();
   const deleteSubscription = useDeleteSubscription();
+  const logCheckin = useLogCheckin();
   const [isBusy, setIsBusy] = useState(false);
+  const hasResolvedCheckinRef = useRef(false);
+
+  // Backstop for leaving via swipe-back/hardware back rather than the
+  // explicit Geri link below — counts as "dismissed, still using" per
+  // docs/03_Flowchart.md §3 box L.
+  useEffect(() => {
+    return () => {
+      if (isFromCheckin && !hasResolvedCheckinRef.current && session && subscription) {
+        hasResolvedCheckinRef.current = true;
+        logCheckin.mutate({
+          subscriptionId: subscription.id,
+          userId: session.user.id,
+          response: 'not_sure_or_no',
+          resultedInCancellation: false,
+        });
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFromCheckin, session, subscription?.id]);
+
+  const handleBack = () => {
+    if (isFromCheckin && !hasResolvedCheckinRef.current && session && subscription) {
+      hasResolvedCheckinRef.current = true;
+      logCheckin.mutate({
+        subscriptionId: subscription.id,
+        userId: session.user.id,
+        response: 'not_sure_or_no',
+        resultedInCancellation: false,
+      });
+    }
+    router.back();
+  };
 
   const handleCancel = () => {
     if (!subscription) return;
@@ -45,6 +82,15 @@ export default function SubscriptionDetail() {
               id: subscription.id,
               edits: { status: 'cancelled', cancelled_at: format(new Date(), 'yyyy-MM-dd') },
             });
+            if (isFromCheckin && !hasResolvedCheckinRef.current && session) {
+              hasResolvedCheckinRef.current = true;
+              await logCheckin.mutateAsync({
+                subscriptionId: subscription.id,
+                userId: session.user.id,
+                response: 'not_sure_or_no',
+                resultedInCancellation: true,
+              });
+            }
           } finally {
             setIsBusy(false);
           }
@@ -103,7 +149,7 @@ export default function SubscriptionDetail() {
   return (
     <ThemedView style={[styles.container, { paddingTop: insets.top }]}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <Pressable onPress={() => router.back()} hitSlop={12}>
+        <Pressable onPress={handleBack} hitSlop={12}>
           <ThemedText type="link">{'‹ Geri'}</ThemedText>
         </Pressable>
 
@@ -112,6 +158,14 @@ export default function SubscriptionDetail() {
           <View style={styles.cancelledBadge}>
             <ThemedText type="small" style={styles.cancelledBadgeText}>
               İptal edildi
+            </ThemedText>
+          </View>
+        )}
+
+        {isFromCheckin && subscription.status === 'active' && (
+          <View style={styles.checkinNudge}>
+            <ThemedText type="small" style={styles.checkinNudgeText}>
+              Kullanmıyorsan, aşağıdan iptal edebilirsin.
             </ThemedText>
           </View>
         )}
@@ -156,8 +210,13 @@ export default function SubscriptionDetail() {
               onPress={() => router.push({ pathname: '/subscription/[id]/edit', params: { id: subscription.id } })}>
               <ThemedText style={styles.secondaryButtonText}>Düzenle</ThemedText>
             </Pressable>
-            <Pressable style={styles.secondaryButton} onPress={handleCancel} disabled={isBusy}>
-              <ThemedText style={styles.secondaryButtonText}>Aboneliği İptal Et</ThemedText>
+            <Pressable
+              style={[styles.secondaryButton, isFromCheckin && styles.cancelButtonHighlighted]}
+              onPress={handleCancel}
+              disabled={isBusy}>
+              <ThemedText style={[styles.secondaryButtonText, isFromCheckin && styles.cancelButtonHighlightedText]}>
+                Aboneliği İptal Et
+              </ThemedText>
             </Pressable>
           </View>
         )}
@@ -192,6 +251,12 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.half,
   },
   cancelledBadgeText: { color: '#6B7280' },
+  checkinNudge: {
+    backgroundColor: '#FEF3C7',
+    borderRadius: 12,
+    padding: Spacing.two,
+  },
+  checkinNudgeText: { color: '#1F2937' },
   lifetimeBox: { alignItems: 'center', paddingVertical: Spacing.three },
   lifetimeAmount: { textAlign: 'center' },
   timeline: { gap: Spacing.one },
@@ -212,6 +277,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   secondaryButtonText: { fontSize: 16, fontWeight: '500' },
+  cancelButtonHighlighted: { backgroundColor: '#D64545', borderColor: '#D64545' },
+  cancelButtonHighlightedText: { color: '#ffffff' },
   deleteButton: {
     borderRadius: 12,
     paddingVertical: Spacing.three,
