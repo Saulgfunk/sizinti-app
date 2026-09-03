@@ -1,5 +1,5 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
-import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
@@ -11,19 +11,14 @@ if (!supabaseUrl || !supabaseAnonKey) {
   );
 }
 
-// expo-secure-store has a 2048-byte per-key limit, which a Supabase session
-// (access + refresh token) can exceed — revisit this adapter (e.g. chunking,
-// or falling back to AsyncStorage for the session blob) once real auth
-// sessions are being persisted in the Auth flow phase.
-const ExpoSecureStoreAdapter = {
-  getItem: (key: string) => SecureStore.getItemAsync(key),
-  setItem: (key: string, value: string) => SecureStore.setItemAsync(key, value),
-  removeItem: (key: string) => SecureStore.deleteItemAsync(key),
-};
-
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    storage: Platform.OS === 'web' ? undefined : ExpoSecureStoreAdapter,
+    // expo-secure-store (used here previously) has a 2048-byte per-key
+    // limit that a real Supabase session (access + refresh token) exceeds —
+    // writes were failing silently, so the session never actually persisted
+    // past a full app restart. AsyncStorage has no such limit and is what
+    // Supabase's own React Native guide uses for this.
+    storage: Platform.OS === 'web' ? undefined : AsyncStorage,
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,
